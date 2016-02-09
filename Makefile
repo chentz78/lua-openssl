@@ -1,8 +1,16 @@
 T=openssl
 
-PREFIX		?=/usr/local
+#PREFIX		?=/usr/local
+PREFIX		?=/Users/chentz/Dev/Lua
+LUAV      ?= $(PREFIX)/lua-5.2.4/src
 LIB_OPTION	?= -shared 
 
+
+ifneq ($(LUAV),)
+LUA_CFLAGS	?= -I$(LUAV)
+LUA_LIBS	?= -L$(LUAV) 
+LUA_LIBDIR	?= $(LUAV)
+else
 #Lua auto detect
 LUA_VERSION ?= $(shell pkg-config luajit --print-provides)
 ifeq ($(LUA_VERSION),)                         ############ Not use luajit
@@ -15,6 +23,7 @@ LUAV		?= $(shell lua -e "_,_,v=string.find(_VERSION,'Lua (.+)');print(v)")
 LUA_CFLAGS	?= $(shell pkg-config luajit --cflags)
 LUA_LIBS	?= $(shell pkg-config luajit --libs)
 LUA_LIBDIR	?= $(PREFIX)/lib/lua/$(LUAV)
+endif
 endif
 
 #OS auto detect
@@ -29,7 +38,7 @@ CFLAGS		    = -fPIC $(OPENSSL_CFLAGS) $(LUA_CFLAGS)
 endif
 ifneq (, $(findstring apple, $(SYS)))
 # Do darwin things
-LDFLAGS		    = -fPIC -lrt -ldl
+LDFLAGS		    = -fPIC -ldl -mmacosx-version-min=10.11
 OPENSSL_LIBS	?= $(shell pkg-config openssl --libs) 
 OPENSSL_CFLAGS	?= $(shell pkg-config openssl --cflags)
 CFLAGS		    = -fPIC $(OPENSSL_CFLAGS) $(LUA_CFLAGS)
@@ -54,7 +63,7 @@ endif
 
 LIBNAME= $T.so.$V
 
-#LIB_OPTION= -bundle -undefined dynamic_lookup #for MacOS X
+LIB_OPTION= -bundle -undefined dynamic_lookup #for MacOS X
 
 # Compilation directives
 WARN_MOST	= -Wall -W -Waggregate-return -Wcast-align -Wmissing-prototypes -Wnested-externs -Wshadow -Wwrite-strings -pedantic
