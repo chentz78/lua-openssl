@@ -2,7 +2,7 @@ T=openssl
 
 #PREFIX		?=/usr/local
 PREFIX		?=/Users/chentz/Dev/Lua
-LUAV      ?= $(PREFIX)/lua-5.2.4/src
+LUAV      ?= $(PREFIX)/lua-5.3.2/src
 LIB_OPTION	?= -shared 
 
 
