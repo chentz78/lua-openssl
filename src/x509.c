@@ -150,12 +150,10 @@ static LUA_FUNCTION(openssl_x509_read)
   if (fmt == FORMAT_DER)
   {
     cert = d2i_X509_bio(in, NULL);
-    BIO_reset(in);
   }
   else if (fmt == FORMAT_PEM)
   {
     cert = PEM_read_bio_X509(in, NULL, NULL, NULL);
-    BIO_reset(in);
   }
 
   BIO_free(in);
@@ -367,7 +365,6 @@ static LUA_FUNCTION(openssl_x509_check)
   if (auxiliar_isclass(L, "openssl.evp_pkey", 2))
   {
     EVP_PKEY * key = CHECK_OBJECT(2, EVP_PKEY, "openssl.evp_pkey");
-    luaL_argcheck(L, openssl_pkey_is_private(key), 2, "must be private key");
     lua_pushboolean(L, X509_check_private_key(cert, key));
     return 1;
   }
@@ -597,38 +594,46 @@ static int openssl_x509_valid_at(lua_State* L)
 
 static int openssl_x509_serial(lua_State *L)
 {
-  BIGNUM *bn;
-  ASN1_INTEGER *serial;
   X509* cert = CHECK_OBJECT(1, X509, "openssl.x509");
-
-  if (lua_isnone(L, 2) || lua_isboolean(L, 2))
+  ASN1_INTEGER *serial = X509_get_serialNumber(cert);
+  if (lua_isboolean(L, 2)) 
   {
-    int asobj = lua_isnone(L, 2) ? 0 : lua_toboolean(L, 2);
-    serial = X509_get_serialNumber(cert);
-    bn = ASN1_INTEGER_to_BN(serial, NULL);
+    int asobj = lua_toboolean(L, 2);
     if (asobj)
     {
+      PUSH_OBJECT(serial, "openssl.asn1_string");
+    }
+    else {
+      BIGNUM *bn = ASN1_INTEGER_to_BN(serial, NULL);
       PUSH_OBJECT(bn, "openssl.bn");
     }
-    else
-    {
-      char *tmp = BN_bn2hex(bn);
-      lua_pushstring(L, tmp);
-      BN_free(bn);
-      OPENSSL_free(tmp);
-    }
-    return 1;
+  }
+  else if(lua_isnone(L, 2))
+  {
+    BIGNUM *bn = ASN1_INTEGER_to_BN(serial, NULL);
+    char *tmp = BN_bn2hex(bn);
+    lua_pushstring(L, tmp);
+    OPENSSL_free(tmp);
+    BN_free(bn);
   }
   else
   {
     int ret;
-    bn = BN_get(L, 2);
-    serial = BN_to_ASN1_INTEGER(bn, NULL);
-    BN_free(bn);
-    ret = X509_set_serialNumber(cert, serial);
+    if (auxiliar_isclass(L, "openssl.asn1_string", 2)) {
+      serial = CHECK_OBJECT(2, ASN1_STRING, "openssl.asn1_string");
+    }
+    else
+    {
+      BIGNUM *bn = BN_get(L, 2);
+      serial = BN_to_ASN1_INTEGER(bn, NULL);
+      BN_free(bn);
+    }
+    luaL_argcheck(L, serial != NULL, 2, "not accept");
+    ret = X509_set_serialNumber(cert, serial);    
     ASN1_INTEGER_free(serial);
     return openssl_pushresult(L, ret);
   }
+  return 1;
 }
 
 static int openssl_x509_version(lua_State *L)
@@ -763,7 +768,6 @@ static int openssl_x509_sign(lua_State*L)
     const EVP_MD *md;
     int ret = 1;
     int i = 3;
-    luaL_argcheck(L, openssl_pkey_is_private(pkey), 2, "must be private key");
     if (auxiliar_isclass(L, "openssl.x509_name", 3))
     {
       X509_NAME* xn = CHECK_OBJECT(3, X509_NAME, "openssl.x509_name");

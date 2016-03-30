@@ -433,7 +433,6 @@ LUA_FUNCTION(openssl_crl_sign)
 
   int ret = 1;
 
-  luaL_argcheck(L, openssl_pkey_is_private(key), 2, "must be private key");
   luaL_argcheck(L, auxiliar_isclass(L, "openssl.x509", 3) || auxiliar_isclass(L, "openssl.x509_name", 3),
                 3, "must be openssl.x509 or openssl.x509_name object");
   if (auxiliar_isclass(L, "openssl.x509_name", 3))
@@ -498,7 +497,6 @@ static LUA_FUNCTION(openssl_crl_diff)
   unsigned int flags = luaL_optinteger(L, 5, 0);
   X509_CRL *diff;
 
-  luaL_argcheck(L, openssl_pkey_is_private(pkey), 3, "must be private key");
   diff  =  X509_CRL_diff(crl, newer, pkey, md, flags);
   if (diff)
   {
@@ -513,9 +511,7 @@ static LUA_FUNCTION(openssl_crl_check)
   X509_CRL *crl = CHECK_OBJECT(1, X509_CRL, "openssl.x509_crl");
   EVP_PKEY* pkey = CHECK_OBJECT(2, EVP_PKEY, "openssl.evp_pkey");
   unsigned long flags = luaL_optinteger(L, 3, X509_V_FLAG_SUITEB_128_LOS);
-  int ret;
-  luaL_argcheck(L, openssl_pkey_is_private(pkey), 2, "must be private key");
-  ret  =  X509_CRL_check_suiteb(crl, pkey, flags);
+  int ret  =  X509_CRL_check_suiteb(crl, pkey, flags);
   return openssl_pushresult(L, ret == X509_V_OK);
 }
 #endif
@@ -675,20 +671,37 @@ static LUA_FUNCTION(openssl_crl_count)
 static LUA_FUNCTION(openssl_crl_get)
 {
   X509_CRL * crl = CHECK_OBJECT(1, X509_CRL, "openssl.x509_crl");
-  int i = luaL_checkint(L, 2);
-  if (i >= 0 && i < sk_X509_REVOKED_num(crl->crl->revoked))
+  int i = 0;
+  X509_REVOKED *revoked = NULL;
+  if (lua_isinteger(L, 2)) {
+    i = lua_tointeger(L, 2);
+    luaL_argcheck(L, (i >= 0 && i < sk_X509_REVOKED_num(crl->crl->revoked)), 2, "Out of range");
+    revoked = sk_X509_REVOKED_value(crl->crl->revoked, i);
+  }
+  else {
+    ASN1_STRING *sn = CHECK_OBJECT(2, ASN1_STRING, "openssl.asn1_string");
+    int cnt = sk_X509_REVOKED_num(crl->crl->revoked);
+    for (i = 0; i < cnt; i++) {
+      X509_REVOKED *rev = sk_X509_REVOKED_value(crl->crl->revoked, i);
+      if (ASN1_STRING_cmp(rev->serialNumber, sn) == 0)
+      {
+        revoked = rev;
+        break;
+      }
+    }
+  }
+  if (revoked)
   {
-    X509_REVOKED *revoked = sk_X509_REVOKED_value(crl->crl->revoked, i);
-
     lua_newtable(L);
 
 #if OPENSSL_VERSION_NUMBER > 0x10000000L
+    AUXILIAR_SET(L, -1, "code", revoked->reason, number);
     AUXILIAR_SET(L, -1, "reason", openssl_i2s_revoke_reason(revoked->reason), string);
 #else
     {
       int crit = 0;
       void* reason = X509_REVOKED_get_ext_d2i(revoked, NID_crl_reason, &crit, NULL);
-
+      AUXILIAR_SET(L, -1, "code", ASN1_ENUMERATED_get(reason), number);
       AUXILIAR_SET(L, -1, "reason", openssl_i2s_revoke_reason(ASN1_ENUMERATED_get(reason)), string);
       ASN1_ENUMERATED_free(reason);
     }
@@ -705,7 +718,6 @@ static LUA_FUNCTION(openssl_crl_get)
       openssl_sk_x509_extension_totable(L, crl->crl->extensions);
       lua_rawset(L, -3);
     }
-    return 1;
   }
   else
     lua_pushnil(L);
