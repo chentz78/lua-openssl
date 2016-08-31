@@ -43,16 +43,24 @@ static LUA_FUNCTION(openssl_rsa_isprivate)
   return 1;
 };
 
+static LUA_FUNCTION(openssl_rsa_size)
+{
+  RSA* rsa = CHECK_OBJECT(1, RSA, "openssl.rsa");
+  lua_pushinteger(L, RSA_size(rsa));
+  return 1;
+};
+
 static LUA_FUNCTION(openssl_rsa_encrypt)
 {
   RSA* rsa = CHECK_OBJECT(1, RSA, "openssl.rsa");
   size_t l;
   const unsigned char* from = (const unsigned char *)luaL_checklstring(L, 2, &l);
   int padding = openssl_get_padding(L, 3, "pkcs1");
+  int ispriv = lua_isnone(L, 4) ? is_private(rsa) : lua_toboolean(L, 4);
   unsigned char* to = OPENSSL_malloc(RSA_size(rsa));
   int flen = l;
 
-  flen = is_private(rsa)
+  flen = ispriv
          ? RSA_private_encrypt(flen, from, to, rsa, padding)
          : RSA_public_encrypt(flen, from, to, rsa, padding);
   if (flen > 0)
@@ -71,10 +79,11 @@ static LUA_FUNCTION(openssl_rsa_decrypt)
   size_t l;
   const unsigned char* from = (const unsigned char *) luaL_checklstring(L, 2, &l);
   int padding = openssl_get_padding(L, 3, "pkcs1");
+  int ispriv = lua_isnone(L, 4) ? is_private(rsa) : lua_toboolean(L, 4);
   unsigned char* to = OPENSSL_malloc(RSA_size(rsa));
   int flen = l;
 
-  flen = is_private(rsa)
+  flen = ispriv
          ? RSA_private_decrypt(flen, from, to, rsa, padding)
          : RSA_public_decrypt(flen, from, to, rsa, padding);
   if (flen > 0)
@@ -85,6 +94,42 @@ static LUA_FUNCTION(openssl_rsa_decrypt)
   }
   OPENSSL_free(to);
   return openssl_pushresult(L, flen);
+};
+
+static LUA_FUNCTION(openssl_rsa_sign)
+{
+  RSA* rsa = CHECK_OBJECT(1, RSA, "openssl.rsa");
+  size_t l;
+  const unsigned char* msg = (const unsigned char *)luaL_checklstring(L, 2, &l);
+  int type = luaL_optint(L, 3, NID_md5_sha1);
+  unsigned char* sig = OPENSSL_malloc(RSA_size(rsa));
+  int flen = l;
+  unsigned int slen = RSA_size(rsa);
+  
+  int ret = RSA_sign(type, msg, flen, sig, &slen, rsa);
+  if (ret == 1)
+  {
+    lua_pushlstring(L, (const char*)sig, slen);
+    OPENSSL_free(sig);
+    return 1;
+  }
+  OPENSSL_free(sig);
+  return openssl_pushresult(L, ret);
+};
+
+static LUA_FUNCTION(openssl_rsa_verify)
+{
+  RSA* rsa = CHECK_OBJECT(1, RSA, "openssl.rsa");
+  size_t l;
+  const unsigned char* from = (const unsigned char *)luaL_checklstring(L, 2, &l);
+  size_t s;
+  const unsigned char* sig = (const unsigned char *)luaL_checklstring(L, 3, &s);
+  int type = luaL_optint(L, 4, NID_md5_sha1);
+  int flen = l;
+  int slen = s;
+
+  int ret = RSA_verify(type, from, flen, sig, slen, rsa);
+  return openssl_pushresult(L, ret);
 };
 
 static LUA_FUNCTION(openssl_rsa_parse)
@@ -102,12 +147,33 @@ static LUA_FUNCTION(openssl_rsa_parse)
   return 1;
 }
 
+static LUA_FUNCTION(openssl_rsa_read)
+{
+  size_t l;
+  const char* data = luaL_checklstring(L, 1, &l);
+  const unsigned char* in = (const unsigned char*)data;
+  RSA *rsa = d2i_RSAPrivateKey(NULL, &in, l);
+  if (rsa == NULL)
+  {
+    in = (const unsigned char*)data;
+    rsa = d2i_RSA_PUBKEY(NULL, &in, l);
+  }
+  if (rsa)
+    PUSH_OBJECT(rsa, "openssl.rsa");
+  else
+    lua_pushnil(L);
+  return 1;
+}
+
 static luaL_Reg rsa_funs[] =
 {
   {"parse",       openssl_rsa_parse},
   {"isprivate",   openssl_rsa_isprivate},
   {"encrypt",     openssl_rsa_encrypt},
   {"decrypt",     openssl_rsa_decrypt},
+  {"sign",        openssl_rsa_sign},
+  {"verify",      openssl_rsa_verify},
+  {"size",        openssl_rsa_size},
 
   {"__gc",        openssl_rsa_free},
   {"__tostring",  auxiliar_tostring},
@@ -121,6 +187,10 @@ static luaL_Reg R[] =
   {"isprivate",   openssl_rsa_isprivate},
   {"encrypt",     openssl_rsa_encrypt},
   {"decrypt",     openssl_rsa_decrypt},
+  {"sign",        openssl_rsa_sign},
+  {"verify",      openssl_rsa_verify},
+  {"size",        openssl_rsa_size},
+  {"read",        openssl_rsa_read},
 
   {NULL, NULL}
 };

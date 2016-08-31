@@ -98,7 +98,7 @@ static int openssl_xname_info(lua_State*L)
 static int openssl_xname_cmp(lua_State*L)
 {
   X509_NAME* a = CHECK_OBJECT(1, X509_NAME, "openssl.x509_name");
-  X509_NAME* b = CHECK_OBJECT(1, X509_NAME, "openssl.x509_name");
+  X509_NAME* b = CHECK_OBJECT(2, X509_NAME, "openssl.x509_name");
   int ret = X509_NAME_cmp(a, b);
   lua_pushboolean(L, ret == 0);
   return 1;
@@ -197,10 +197,8 @@ static int openssl_xname_delete_entry(lua_State*L)
   X509_NAME_ENTRY *xe = X509_NAME_delete_entry(xn, loc);
   if (xe)
   {
-    ASN1_OBJECT *obj = OBJ_dup(xe->object);
-    ASN1_STRING *as = ASN1_STRING_dup(xe->value);
-    PUSH_OBJECT(obj, "openssl.asn1_object");
-    PUSH_OBJECT(as, "openssl.asn1_string");
+    openssl_push_asn1object(L, xe->object);
+    PUSH_ASN1_STRING(L, xe->value);
     X509_NAME_ENTRY_free(xe);
     return 2;
   }

@@ -12,16 +12,10 @@ IMP_LUA_SK(X509_ALGOR, x509_algor)
 
 #define MYNAME "x509.algor"
 
-void openssl_xalgor_free(X509_ALGOR* alg)
-{
-  X509_ALGOR_free(alg);
-}
-
-
 static int openssl_xalgor_gc(lua_State* L)
 {
   X509_ALGOR* alg = CHECK_OBJECT(1, X509_ALGOR, "openssl.x509_algor");
-  openssl_xalgor_free(alg);
+  X509_ALGOR_free(alg);
   return 0;
 }
 
@@ -57,15 +51,14 @@ static int openssl_xalgor_get(lua_State* L)
 {
   int type;
   void* val;
-  ASN1_OBJECT *obj, *dup;
+  ASN1_OBJECT *obj;
 
   X509_ALGOR* alg = CHECK_OBJECT(1, X509_ALGOR, "openssl.x509_algor");
 
   X509_ALGOR_get0(&obj, &type, &val, alg);
   if (obj != NULL)
   {
-    dup = OBJ_dup(obj);
-    PUSH_OBJECT(dup, "openssl.asn1_object");
+    openssl_push_asn1object(L, obj);
   }
   else
     lua_pushnil(L);
@@ -73,8 +66,7 @@ static int openssl_xalgor_get(lua_State* L)
     lua_pushnil(L);
   else
   {
-    ASN1_STRING *s = ASN1_STRING_dup(val);
-    PUSH_OBJECT(s, "openssl.asn1_string");
+    PUSH_ASN1_STRING(L, val);
   }
 
   return 2;

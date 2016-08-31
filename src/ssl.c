@@ -73,10 +73,9 @@ static int openssl_ssl_ctx_new(lua_State*L)
   else if (strcmp(meth, "SSLv2_client") == 0)
     method = SSLv2_client_method();
 #endif
+#endif
 #ifdef LOAD_SSL_CUSTOM
   LOAD_SSL_CUSTOM
-#endif
-
 #endif
   else
     luaL_error(L, "#1:%s not supported\n"
@@ -275,7 +274,7 @@ static int openssl_ssl_ctx_options(lua_State*L)
         for (j = 0; ssl_options[j].name; j++)
         {
           LuaL_Enum e = ssl_options[j];
-          if (strcasecmp(s, e.name))
+          if (strcasecmp(s, e.name) == 0)
           {
             options |= e.val;
             break;
@@ -298,7 +297,7 @@ static int openssl_ssl_ctx_options(lua_State*L)
   for (i = 0; ssl_options[i].name; i++)
   {
     LuaL_Enum e = ssl_options[i];
-    if (options && e.val)
+    if (options & e.val)
     {
       lua_pushstring(L, e.name);
       ret++;
@@ -969,18 +968,25 @@ static int openssl_session_cache_mode(lua_State *L)
   return 1;
 }
 
+#ifdef SSL_CTX_EXT_DEFINE
+SSL_CTX_EXT_DEFINE
+#endif
+
 static luaL_Reg ssl_ctx_funcs[] =
 {
   {"ssl",             openssl_ssl_ctx_new_ssl},
   {"bio",             openssl_ssl_ctx_new_bio},
-
+#ifndef SSL_CTX_USE_EXT
   {"use",             openssl_ssl_ctx_use},
+#else
+  SSL_CTX_USE_EXT
+#endif
   {"add",             openssl_ssl_ctx_add},
   {"mode",            openssl_ssl_ctx_mode},
   {"timeout",         openssl_ssl_ctx_timeout},
   {"options",         openssl_ssl_ctx_options},
   {"quiet_shutdown",  openssl_ssl_ctx_quiet_shutdown},
-  {"verify_locations",openssl_ssl_ctx_load_verify_locations},
+  {"verify_locations", openssl_ssl_ctx_load_verify_locations},
   {"cert_store",      openssl_ssl_ctx_cert_store},
 #ifndef OPENSSL_NO_ENGINE
   {"set_engine",      openssl_ssl_ctx_set_engine},

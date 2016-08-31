@@ -259,9 +259,32 @@ static LUA_FUNCTION(openssl_csr_sign)
   {
     EVP_PKEY *pkey = CHECK_OBJECT(2, EVP_PKEY, "openssl.evp_pkey");
     const EVP_MD* md = lua_isnone(L, 3) ? EVP_get_digestbyname("sha1") : get_digest(L, 3);
-    int ret = X509_REQ_sign(csr, pkey, md);
-    if (ret > 0)
-      ret = 1;
+    int ret = 1;
+    EVP_PKEY *pubkey = X509_REQ_get_pubkey(csr);
+    if (pubkey == NULL)
+    {
+      BIO* bio = BIO_new(BIO_s_mem());
+      if ((ret = i2d_PUBKEY_bio(bio, pkey))==1)
+      {
+        pubkey = d2i_PUBKEY_bio(bio, NULL);
+        if (pubkey)
+        {
+          ret = X509_REQ_set_pubkey(csr, pubkey);
+          EVP_PKEY_free(pubkey);
+        }
+        else
+        {
+          ret = 0;
+        }
+      }
+      BIO_free(bio);
+    }
+    else
+    {
+      EVP_PKEY_free(pubkey);
+    }
+    if (ret == 1)
+      ret = X509_REQ_sign(csr, pkey, md);
     return openssl_pushresult(L, ret);
   }
   else if (lua_isstring(L, 2))
@@ -304,17 +327,18 @@ static LUA_FUNCTION(openssl_csr_sign)
 
 static LUA_FUNCTION(openssl_csr_parse)
 {
-  X509_REQ * csr = CHECK_OBJECT(1, X509_REQ, "openssl.x509_req");
-
-  X509_NAME * subject = X509_REQ_get_subject_name(csr);
+  X509_REQ *csr = CHECK_OBJECT(1, X509_REQ, "openssl.x509_req");
+  X509_NAME *subject = X509_REQ_get_subject_name(csr);
   STACK_OF(X509_EXTENSION) *exts  = X509_REQ_get_extensions(csr);
+  X509_ALGOR *alg;
 
   lua_newtable(L);
 
   openssl_push_asn1(L, csr->signature, V_ASN1_BIT_STRING);
   lua_setfield(L, -2, "signature");
 
-  openssl_push_x509_algor(L, csr->sig_alg);
+  alg = X509_ALGOR_dup(csr->sig_alg);
+  PUSH_OBJECT(alg, "openssl.x509_algor");
   lua_setfield(L, -2, "sig_alg");
 
   lua_newtable(L);

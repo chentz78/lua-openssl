@@ -179,7 +179,6 @@ static BIO *PKCS7_find_digest(EVP_MD_CTX **pmd, BIO *bio, int nid)
       return bio;
     bio = BIO_next(bio);
   }
-  return NULL;
 }
 
 static int PKCS7_SIGNER_INFO_sign_0(PKCS7_SIGNER_INFO *si)
@@ -1220,16 +1219,13 @@ static LUA_FUNCTION(openssl_pkcs7_parse)
   case NID_pkcs7_digest:
   {
     PKCS7_DIGEST* d = p7->d.digest;
-
-    ASN1_OCTET_STRING *as = ASN1_STRING_dup(d->digest);
-    PUSH_OBJECT(as, "openssl.asn1_string");
+    PUSH_ASN1_OCTET_STRING(L, d->digest);
     lua_setfield(L, -2, "digest");
   }
   break;
   case NID_pkcs7_data:
   {
-    ASN1_OCTET_STRING *as = ASN1_STRING_dup(p7->d.data);
-    PUSH_OBJECT(as, "openssl.asn1_string");
+    PUSH_ASN1_OCTET_STRING(L, p7->d.data);
     lua_setfield(L, -2, "data");
   }
   break;

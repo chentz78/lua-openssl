@@ -418,9 +418,27 @@ static LUA_FUNCTION(openssl_crl_sort)
 static LUA_FUNCTION(openssl_crl_verify)
 {
   X509_CRL *crl = CHECK_OBJECT(1, X509_CRL, "openssl.x509_crl");
-  X509* cacert = CHECK_OBJECT(2, X509, "openssl.x509");
+  EVP_PKEY *pub = NULL;
+  int ret;
+  luaL_argcheck(L, 
+    auxiliar_isclass(L, "openssl.x509", 2) ||
+    auxiliar_isclass(L, "openssl.evp_pkey", 2),
+    2,
+    "must be x509 or evp_pkey object");
+  if (auxiliar_isclass(L, "openssl.evp_pkey", 2))
+  {
+    pub = CHECK_OBJECT(2, EVP_PKEY, "openssl.evp_pkey");
+    ret = X509_CRL_verify(crl, pub);
+  }
+  else 
+  {
+    X509* cacert = CHECK_OBJECT(2, X509, "openssl.x509");
+    pub = X509_get_pubkey(cacert);
+    ret = X509_CRL_verify(crl, pub);
+    EVP_PKEY_free(pub);
+  }
 
-  int ret = X509_CRL_verify(crl, cacert->cert_info->key->pkey);
+  
   return openssl_pushresult(L, ret);
 }
 
@@ -520,6 +538,7 @@ static LUA_FUNCTION(openssl_crl_parse)
 {
   X509_CRL *crl = CHECK_OBJECT(1, X509_CRL, "openssl.x509_crl");
   int num, i;
+  X509_ALGOR *alg;
 
   lua_newtable(L);
   AUXILIAR_SET(L, -1, "version", X509_CRL_get_version(crl), integer);
@@ -554,7 +573,8 @@ static LUA_FUNCTION(openssl_crl_parse)
   PUSH_ASN1_TIME(L, X509_CRL_get_nextUpdate(crl));
   lua_setfield(L, -2, "nextUpdate");
 
-  openssl_push_x509_algor(L, crl->crl->sig_alg);
+  alg = X509_ALGOR_dup(crl->crl->sig_alg);
+  PUSH_OBJECT(alg, "openssl.x509_algor");
   lua_setfield(L, -2, "sig_alg");
 
 #if OPENSSL_VERSION_NUMBER > 0x00909000L
@@ -673,15 +693,18 @@ static LUA_FUNCTION(openssl_crl_get)
   X509_CRL * crl = CHECK_OBJECT(1, X509_CRL, "openssl.x509_crl");
   int i = 0;
   X509_REVOKED *revoked = NULL;
-  if (lua_isinteger(L, 2)) {
+  if (lua_isinteger(L, 2))
+  {
     i = lua_tointeger(L, 2);
     luaL_argcheck(L, (i >= 0 && i < sk_X509_REVOKED_num(crl->crl->revoked)), 2, "Out of range");
     revoked = sk_X509_REVOKED_value(crl->crl->revoked, i);
   }
-  else {
-    ASN1_STRING *sn = CHECK_OBJECT(2, ASN1_STRING, "openssl.asn1_string");
+  else
+  {
+    ASN1_STRING *sn = CHECK_OBJECT(2, ASN1_STRING, "openssl.asn1_integer");
     int cnt = sk_X509_REVOKED_num(crl->crl->revoked);
-    for (i = 0; i < cnt; i++) {
+    for (i = 0; i < cnt; i++)
+    {
       X509_REVOKED *rev = sk_X509_REVOKED_value(crl->crl->revoked, i);
       if (ASN1_STRING_cmp(rev->serialNumber, sn) == 0)
       {

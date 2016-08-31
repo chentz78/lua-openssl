@@ -26,8 +26,8 @@ static int openssl_pkey_bits(lua_State *L)
 
 int openssl_pkey_is_private(EVP_PKEY* pkey)
 {
-  assert(pkey != NULL);
   int ret = 1;
+  assert(pkey != NULL);
   switch (pkey->type)
   {
 #ifndef OPENSSL_NO_RSA
@@ -481,6 +481,10 @@ static LUA_FUNCTION(openssl_pkey_new)
       }
       EC_GROUP_free(group);
     }
+  } else if (auxiliar_isclass(L, "openssl.rsa", 1)) {
+    RSA* rsa = CHECK_OBJECT(1, RSA, "openssl.rsa");
+    pkey = EVP_PKEY_new();
+    EVP_PKEY_assign_RSA(pkey, rsa);
   }
 
   if (pkey && pkey->pkey.ptr)
@@ -511,17 +515,9 @@ static LUA_FUNCTION(openssl_pkey_export)
 
   if (!lua_isnoneornil(L, 2))
     expem = lua_toboolean(L, 2);
-
-  if (expem)
-  {
-    if (!lua_isnoneornil(L, 3))
-      exraw = lua_toboolean(L, 3);
-    passphrase = luaL_optlstring(L, 4, NULL, &passphrase_len);
-  }
-  else
-  {
-    passphrase = luaL_optlstring(L, 3, NULL, &passphrase_len);
-  }
+  if (!lua_isnoneornil(L, 3))
+    exraw = lua_toboolean(L, 3);
+  passphrase = luaL_optlstring(L, 4, NULL, &passphrase_len);
 
   if (passphrase)
   {
@@ -902,19 +898,36 @@ static LUA_FUNCTION(openssl_sign)
   if (mdtype)
   {
     int ret = 0;
-    EVP_MD_CTX md_ctx;
-    unsigned int siglen = EVP_PKEY_size(pkey);
-    unsigned char *sigbuf = malloc(siglen + 1);
+    EVP_MD_CTX *ctx = EVP_MD_CTX_create();
 
-    EVP_SignInit(&md_ctx, mdtype);
-    EVP_SignUpdate(&md_ctx, data, data_len);
-    if (EVP_SignFinal (&md_ctx, sigbuf, &siglen, pkey))
-    {
-      lua_pushlstring(L, (char *)sigbuf, siglen);
-      ret = 1;
+    ret = EVP_DigestSignInit(ctx, NULL, mdtype, NULL, pkey);
+    if (ret == 1) {
+      ret = EVP_DigestSignUpdate(ctx, data, data_len);
+      if (ret == 1) {
+        size_t siglen = 0;
+        unsigned char *sigbuf = NULL;
+        ret = EVP_DigestSignFinal(ctx, NULL, &siglen);
+        if (ret == 1) {
+          siglen += 2;
+          sigbuf = OPENSSL_malloc(siglen);
+          ret = EVP_DigestSignFinal(ctx, sigbuf, &siglen);
+          if (ret == 1) {
+            lua_pushlstring(L, (char *)sigbuf, siglen);
+          }
+          else
+            ret = openssl_pushresult(L, ret);
+          OPENSSL_free(sigbuf);
+        }
+        else
+          ret = openssl_pushresult(L, ret);
+      }
+      else
+        ret = openssl_pushresult(L, ret);
     }
-    free(sigbuf);
-    EVP_MD_CTX_cleanup(&md_ctx);
+    else
+      ret = openssl_pushresult(L, ret);
+
+    EVP_MD_CTX_destroy(ctx);
     return ret;
   }
   else
@@ -939,16 +952,27 @@ static LUA_FUNCTION(openssl_verify)
     mdtype = EVP_get_digestbyname("sha1");
   if (mdtype)
   {
-    int result;
-    EVP_MD_CTX     md_ctx;
+    int ret;
+    EVP_MD_CTX *ctx = EVP_MD_CTX_create();
 
-    EVP_VerifyInit(&md_ctx, mdtype);
-    EVP_VerifyUpdate (&md_ctx, data, data_len);
-    result = EVP_VerifyFinal (&md_ctx, (unsigned char *)signature, signature_len, pkey);
-    EVP_MD_CTX_cleanup(&md_ctx);
-    lua_pushboolean(L, result == 1);
+    ret = EVP_DigestVerifyInit(ctx, NULL, mdtype, NULL, pkey);
+    if (ret == 1) {
+      ret = EVP_DigestVerifyUpdate(ctx, data, data_len);
+      if (ret == 1) {
+        ret = EVP_DigestVerifyFinal(ctx, (unsigned char *)signature, signature_len);
+        if (ret == 1) {
+          lua_pushboolean(L, ret == 1);
+        }
+        else
+          ret = openssl_pushresult(L, ret);
+      }else
+        ret = openssl_pushresult(L, ret);
+    }
+    else
+      ret = openssl_pushresult(L, ret);
 
-    return 1;
+    EVP_MD_CTX_destroy(ctx);
+    return ret;
   }
   else
     luaL_argerror(L, 4, "Not support digest alg");

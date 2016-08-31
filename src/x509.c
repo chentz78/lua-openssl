@@ -13,19 +13,6 @@
 #define MYVERSION MYNAME " library for " LUA_VERSION " / Nov 2014 / "\
   "based on OpenSSL " SHLIB_VERSION_NUMBER
 
-int openssl_push_x509_algor(lua_State*L, const X509_ALGOR* alg)
-{
-  lua_newtable(L);
-  openssl_push_asn1object(L, alg->algorithm);
-  lua_setfield(L, -2, "algorithm");
-  if (alg->parameter)
-  {
-    openssl_push_asn1type(L, alg->parameter);
-    lua_setfield(L, -2, "parameter");
-  }
-  return 1;
-};
-
 int openssl_push_general_name(lua_State*L, const GENERAL_NAME* general_name)
 {
   lua_newtable(L);
@@ -372,8 +359,17 @@ static LUA_FUNCTION(openssl_x509_check)
   {
     X509_STORE* store = CHECK_OBJECT(2, X509_STORE, "openssl.x509_store");
     STACK_OF(X509)* untrustedchain = lua_isnoneornil(L, 3) ?  NULL : openssl_sk_x509_fromtable(L, 3);
-    int purpose = lua_isnone(L, 4) ? 0 : X509_PURPOSE_get_by_sname((char*)luaL_optstring(L, 4, "any"));
+    int purpose = 0;
     int ret = 0;
+    if (!lua_isnone(L, 4)) {
+      int purpose_id = X509_PURPOSE_get_by_sname((char*)luaL_optstring(L, 4, "any"));
+      if (purpose_id >= 0) {
+        X509_PURPOSE* ppurpose = X509_PURPOSE_get0(purpose_id);
+        if (ppurpose) {
+          purpose = ppurpose->purpose;
+        }
+      }
+    }
 #if 0
     X509_STORE_set_verify_cb_func(store, verify_cb);
 #endif
@@ -384,6 +380,47 @@ static LUA_FUNCTION(openssl_x509_check)
     return 2;
   }
 }
+
+#if OPENSSL_VERSION_NUMBER > 0x10002000L
+static LUA_FUNCTION(openssl_x509_check_host)
+{
+  X509 * cert = CHECK_OBJECT(1, X509, "openssl.x509");
+  if (lua_isstring(L, 2))
+  {
+    const char *hostname = lua_tostring(L, 2);
+    lua_pushboolean(L, X509_check_host(cert, hostname, strlen(hostname), 0, NULL));
+  } else {
+    lua_pushboolean(L, 0);
+  }
+  return 1;
+}
+
+static LUA_FUNCTION(openssl_x509_check_email)
+{
+  X509 * cert = CHECK_OBJECT(1, X509, "openssl.x509");
+  if (lua_isstring(L, 2))
+  {
+    const char *email = lua_tostring(L, 2);
+    lua_pushboolean(L, X509_check_email(cert, email, strlen(email), 0));
+  } else {
+    lua_pushboolean(L, 0);
+  }
+  return 1;
+}
+
+static LUA_FUNCTION(openssl_x509_check_ip_asc)
+{
+  X509 * cert = CHECK_OBJECT(1, X509, "openssl.x509");
+  if (lua_isstring(L, 2))
+  {
+    const char *ip_asc = lua_tostring(L, 2);
+    lua_pushboolean(L, X509_check_ip_asc(cert, ip_asc, 0));
+  } else {
+    lua_pushboolean(L, 0);
+  }
+  return 1;
+}
+#endif
 
 IMP_LUA_SK(X509, x509)
 
@@ -488,7 +525,7 @@ static int openssl_x509_notbefore(lua_State *L)
       at = ASN1_TIME_new();
       ASN1_TIME_set(at, time);
     }
-    if (lua_isstring(L, 2))
+    else if (lua_isstring(L, 2))
     {
       const char* time = lua_tostring(L, 2);
       at = ASN1_TIME_new();
@@ -501,6 +538,7 @@ static int openssl_x509_notbefore(lua_State *L)
     if (at)
     {
       ret = X509_set_notBefore(cert, at);
+      ASN1_TIME_free(at);
     }
     else
       ret = 0;
@@ -525,7 +563,7 @@ static int openssl_x509_notafter(lua_State *L)
       at = ASN1_TIME_new();
       ASN1_TIME_set(at, time);
     }
-    if (lua_isstring(L, 2))
+    else if (lua_isstring(L, 2))
     {
       const char* time = lua_tostring(L, 2);
       at = ASN1_TIME_new();
@@ -538,6 +576,7 @@ static int openssl_x509_notafter(lua_State *L)
     if (at)
     {
       ret = X509_set_notAfter(cert, at);
+      ASN1_TIME_free(at);
     }
     else
       ret = 0;
@@ -596,19 +635,20 @@ static int openssl_x509_serial(lua_State *L)
 {
   X509* cert = CHECK_OBJECT(1, X509, "openssl.x509");
   ASN1_INTEGER *serial = X509_get_serialNumber(cert);
-  if (lua_isboolean(L, 2)) 
+  if (lua_isboolean(L, 2))
   {
     int asobj = lua_toboolean(L, 2);
     if (asobj)
     {
-      PUSH_OBJECT(serial, "openssl.asn1_string");
+      PUSH_ASN1_INTEGER(L, serial);
     }
-    else {
+    else
+    {
       BIGNUM *bn = ASN1_INTEGER_to_BN(serial, NULL);
       PUSH_OBJECT(bn, "openssl.bn");
     }
   }
-  else if(lua_isnone(L, 2))
+  else if (lua_isnone(L, 2))
   {
     BIGNUM *bn = ASN1_INTEGER_to_BN(serial, NULL);
     char *tmp = BN_bn2hex(bn);
@@ -619,7 +659,8 @@ static int openssl_x509_serial(lua_State *L)
   else
   {
     int ret;
-    if (auxiliar_isclass(L, "openssl.asn1_string", 2)) {
+    if (auxiliar_isclass(L, "openssl.asn1_string", 2))
+    {
       serial = CHECK_OBJECT(2, ASN1_STRING, "openssl.asn1_string");
     }
     else
@@ -629,7 +670,7 @@ static int openssl_x509_serial(lua_State *L)
       BN_free(bn);
     }
     luaL_argcheck(L, serial != NULL, 2, "not accept");
-    ret = X509_set_serialNumber(cert, serial);    
+    ret = X509_set_serialNumber(cert, serial);
     ASN1_INTEGER_free(serial);
     return openssl_pushresult(L, ret);
   }
@@ -829,8 +870,10 @@ static int openssl_x509_verify(lua_State*L)
       }
       else
         lua_pushnil(L);
-      if (x->sig_alg)
-        openssl_push_x509_algor(L, x->sig_alg);
+      if (x->sig_alg) {
+        X509_ALGOR *alg = X509_ALGOR_dup(x->sig_alg);
+        PUSH_OBJECT(alg, "openssl.x509_algor");
+      }
       else
         lua_pushnil(L);
       return 3;
@@ -850,6 +893,11 @@ static luaL_Reg x509_funcs[] =
   {"parse",       openssl_x509_parse},
   {"export",      openssl_x509_export},
   {"check",       openssl_x509_check},
+#if OPENSSL_VERSION_NUMBER > 0x10002000L
+  {"check_host",  openssl_x509_check_host},
+  {"check_email", openssl_x509_check_email},
+  {"check_ip_asc",openssl_x509_check_ip_asc},
+#endif
   {"pubkey",      openssl_x509_public_key},
   {"version",     openssl_x509_version},
 
