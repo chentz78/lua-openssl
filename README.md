@@ -291,6 +291,15 @@ local cli = assert(bio.connect(host..':'..port,true))
     print(openssl.error(true))
 ```
 
+###Example 6: secp256k1 ECKey generation
+```lua
+local pkey = require("openssl").pkey
+local ec = pkey.new('ec', 'secp256k1')
+local t = ec:parse().ec:parse()
+print(ec:export()) --PEM private Key
+print(pkey.get_public(ec):export()) --PEM public key
+```
+
 For more examples, please see test lua script file.
 
 
