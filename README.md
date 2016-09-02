@@ -295,7 +295,6 @@ local cli = assert(bio.connect(host..':'..port,true))
 ```lua
 local pkey = require("openssl").pkey
 local ec = pkey.new('ec', 'secp256k1')
-local t = ec:parse().ec:parse()
 print(ec:export()) --PEM private Key
 print(pkey.get_public(ec):export()) --PEM public key
 ```
