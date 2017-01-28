@@ -16,7 +16,7 @@ function new() end
 --- generate a new keypair
 -- @tparam[opt='rsa'] string alg, accept 'rsa','dsa','dh'
 -- @tparam[opt=1024|512] integer bits, rsa with 1024,dh with 512
--- @tparam[opt]  when alg is rsa give e value default is 0x10001
+-- @tparam[opt] integer when alg is rsa give e value default is 0x10001
 -- @treturn evp_pkey object with mapping to EVP_PKEY in openssl
 function new() end
 
@@ -43,7 +43,7 @@ function get_public() end
 --- read public/private key from data
 -- @tparam string|openssl.bio input string data or bio object
 -- @tparam[opt=false] boolean priv prikey set true when input is private key
--- @tparam[opt='auto'] format format or encoding of input, support 'auto','pem','der'
+-- @tparam[opt='auto'] string format or encoding of input, support 'auto','pem','der'
 -- @tparam[opt] string passhprase when input is private key, or key types 'ec','rsa','dsa','dh'
 -- @treturn evp_pkey public key
 -- @see evp_pkey
@@ -124,9 +124,9 @@ do  -- define evp_pkey
 
 --- export evp_pkey as pem/der string
 -- @tparam[opt=true] boolean pem default export as pem format, false export as der string
--- @tparam[opt=false] boolean raw_key true for export low layer key just rsa,dsa,ec, and public key only support RSA
+-- @tparam[opt=false] boolean raw true for export low layer key just rsa,dsa,ec
 -- @tparam[opt] string passphrase if given, export key will encrypt with des-cbc-ede,
---    only need when export private key
+-- only need when export private key
 -- @treturn string
 function export() end
 

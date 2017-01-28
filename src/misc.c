@@ -28,7 +28,7 @@ BIO* load_bio_object(lua_State* L, int idx)
   else if (auxiliar_isclass(L, "openssl.bio", idx))
   {
     bio = CHECK_OBJECT(idx, BIO, "openssl.bio");
-    CRYPTO_add(&bio->references, 1, CRYPTO_LOCK_BIO);
+    BIO_up_ref(bio);
   }
   else
     luaL_argerror(L, idx, "only support string or openssl.bio");
@@ -105,6 +105,11 @@ BIGNUM *BN_get(lua_State *L, int i)
   }
   case LUA_TUSERDATA:
     BN_copy(x, CHECK_OBJECT(i, BIGNUM, "openssl.bn"));
+    break;
+  case LUA_TNIL:
+    BN_free(x);
+    x = NULL;
+    break;
   }
   return x;
 }
